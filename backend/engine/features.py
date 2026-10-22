@@ -1,5 +1,6 @@
 import pyttsx3
 import speech_recognition as sr
+import sounddevice as sd
 
 def speak(text):
     engine = pyttsx3.init()
@@ -13,11 +14,19 @@ def speak(text):
 
 def listen():
     recognizer = sr.Recognizer()
-    recognizer.pause_threshold = 1
 
-    with sr.Microphone() as source:
-        print("Listening...")
-        audio = recognizer.listen(source, timeout=5, phrase_time_limit=10)
+    sample_rate = 16000
+    recording_seconds = 5
+
+    print("Speak now (recording for 5 seconds)...")
+    recording = sd.rec(
+        int(recording_seconds * sample_rate),
+        samplerate=sample_rate,
+        channels=1,
+        dtype="int16",
+    )
+    sd.wait()
+    audio = sr.AudioData(recording.tobytes(), sample_rate, 2)
 
     try:
         command = recognizer.recognize_google(audio, language='en-US')
