@@ -1,0 +1,1028 @@
+AI VOICE ASSISTANT (JARVIS) - PROJECT STUDY REPORT
+==================================================
+
+Report ka maqsad
+---------------
+Yeh report repository ke maujooda source code, requirements.txt, data/knowledge.txt,
+frontend aur README ko padh kar banayi gayi hai. Iska use project ko samajhne,
+seekhne, aur apna AI voice agent banane ke reference ke roop mein kiya ja sakta hai.
+
+Important: README mein kai features future/desired project ke roop mein likhe hain.
+Neeche "abhi implemented" aur "abhi nahi / incomplete" ko alag bataya gaya hai.
+Yeh source-code inspection par aadharit report hai; application ko run karke
+end-to-end test nahi kiya gaya.
+
+
+1. PROJECT KA OVERVIEW
+----------------------
+Yeh Python-based Jarvis-style assistant hai jisme:
+
+- Streamlit chat UI aur microphone recording deta hai.
+- FastAPI backend text chat aur audio-upload endpoints deta hai.
+- Ollama par chalne wala Llama 3 model jawab banata hai.
+- LangChain aur ChromaDB ke zariye local knowledge-base se RAG retrieval hota hai.
+- Hugging Face sentence-transformer text ko embeddings mein badalta hai.
+- Whisper uploaded audio ko text mein transcribe karta hai.
+- gTTS frontend mein assistant response ko MP3 speech mein badalta hai.
+- Google, YouTube, Weather search aur Maps ke liye browser tabs kholne wale
+  helper functions hain.
+- Ek alag command-line voice loop SpeechRecognition aur pyttsx3 ka istemal karta hai.
+
+High-level architecture:
+
+User (text ya microphone)
+    -> Streamlit frontend (frontend/streamlit_app.py)
+    -> FastAPI backend (app/main.py)
+    -> command routing ya RAG (app/tools.py / app/rag.py)
+    -> Ollama LLM + ChromaDB/Hugging Face embeddings
+    -> answer wapas frontend ko
+    -> gTTS se browser mein audio playback
+
+Voice API path:
+
+Microphone recording
+    -> Streamlit audio upload
+    -> FastAPI /voice
+    -> Whisper transcription
+    -> RAG answer
+    -> Streamlit response + gTTS playback
+
+
+2. TECH STACK AUR USKA KAAM
+----------------------------
+
+Python
+  Backend, voice logic, RAG pipeline aur Streamlit UI Python mein likhe gaye hain.
+  README prompt Python 3.11+ ka zikr karta hai, lekin requirements.txt mein
+  Python version pin ya project configuration maujood nahi hai.
+
+FastAPI
+  app/main.py mein HTTP backend hai. POST /chat JSON question/history leta hai.
+  POST /voice multipart audio file leta hai. FastAPI app ko Uvicorn serve karta hai.
+
+Pydantic
+  ChatRequest model /chat request body ke question aur history fields ko define
+  karta hai. History filhaal plain list hai; har message ka strict schema define
+  nahi hai.
+
+Streamlit
+  frontend/streamlit_app.py chat screen, sidebar, chat state, recording control,
+  API calls, errors aur audio output sambhalta hai.
+
+Custom CSS
+  frontend/styles.css dark gradient background, header, card, sidebar aur audio/
+  chat input styling deta hai. Kuch message bubble styling CSS mein hai, jabki
+  messages ka HTML Python file mein inline banaya gaya hai.
+
+LangChain
+  Ollama LLM aur Chroma vector store ko jodne ke liye prayog hua hai.
+  app/rag.py mein OllamaLLM aur retriever invoke hote hain.
+
+Ollama + Llama 3
+  app/rag.py llama3 model ko temperature 0.3 ke saath configure karta hai.
+  Iske liye Ollama machine par chalna chahiye aur llama3 model available hona chahiye.
+
+ChromaDB
+  Persistent vector database db/ directory mein configure hai. app/vectorstore.py
+  Chroma collection ko disk par rakhta/kholega.
+
+Hugging Face sentence-transformers
+  all-MiniLM-L6-v2 model knowledge text aur user query ke embeddings ke liye
+  configure kiya gaya hai. Pehli baar model download/cache ho sakta hai.
+
+Whisper
+  app/main.py import ke samay Whisper ka "base" model load karta hai.
+  /voice endpoint uploaded audio ko transcribe karne ke liye model.transcribe()
+  chalata hai. Whisper package requirements.txt mein listed nahi hai.
+
+SpeechRecognition
+  app/app.py ke command-line loop mein microphone input aur recognize_google()
+  speech-to-text ke liye hain. Is path ko internet aur system microphone/audio
+  dependencies ki zaroorat pad sakti hai.
+
+gTTS
+  frontend/streamlit_app.py assistant text ka MP3 audio banata hai aur HTML audio
+  player ke zariye browser mein play karta hai. gTTS requirements.txt mein listed
+  nahi hai. gTTS aam taur par Google text-to-speech service tak network request
+  karta hai.
+
+pyttsx3
+  app/app.py aur app/speech.py/app/tts.py mein local text-to-speech ke liye use
+  hua hai. Yeh Streamlit UI ka output path nahi hai; CLI voice loop mein pyttsx3
+  bolta hai.
+
+requests
+  Streamlit frontend FastAPI ko HTTP requests bhejta hai. requirements.txt mein
+  requests listed nahi hai.
+
+streamlit-mic-recorder
+  Frontend microphone widget is external package se aata hai. Yeh
+  requirements.txt mein listed nahi hai.
+
+urllib.parse, re, webbrowser
+  Standard-library modules. Search query encode karne, command text saaf karne,
+  aur backend host par browser tab kholne mein app/tools.py inka use karta hai.
+
+
+3. REPOSITORY FILES KA ROLE
+---------------------------
+
+app/main.py
+  FastAPI backend. Chat command routing, /chat endpoint, /voice upload endpoint,
+  Whisper model loading aur audio transcription.
+
+app/rag.py
+  Chroma retriever (top 3 results), Ollama LLM, system prompt aur answer
+  generation. Chat history ke aakhri 10 messages prompt mein bheje jaate hain.
+
+app/vectorstore.py
+  Hugging Face embedding model aur db/ mein persistent Chroma store banata/kholega.
+
+app/ingest.py
+  data/knowledge.txt ko ek LangChain Document mein padhta hai aur vector store mein
+  add karta hai. Yeh script ingestion ke liye chalayi ja sakti hai.
+
+app/tools.py
+  YouTube, Google, weather aur Google Maps search URL banata hai aur
+  webbrowser.open_new_tab() se kholta hai. Weather function real weather API se
+  data nahi laata; yeh Google search results page kholta hai.
+
+app/app.py
+  Independent command-line microphone assistant: SpeechRecognition se sunta hai,
+  recognize_google() se text banata hai, ask_rag() se answer leta hai, aur
+  pyttsx3 se bolta hai. "exit", "quit", "stop" par rukta hai.
+
+app/speech.py aur app/tts.py
+  Dono pyttsx3 ke engine ko initialize karke speak(text) function dete hain.
+  Maujooda frontend/backend path in functions ko use nahi karta.
+
+app/test_tts.py
+  Automated test suite nahi, balki ek ad-hoc experiment hai: gTTS MP3 banata hai,
+  phir "afplay" se chalane ki koshish karta hai, aur LangChain @tool weather
+  example chalata hai. "afplay" macOS command hai; Windows par yeh test seedha
+  kaam nahi karega.
+
+frontend/streamlit_app.py
+  Streamlit UI, mic_recorder, session_state chat messages, FastAPI requests aur
+  gTTS autoplay audio.
+
+frontend/styles.css
+  Streamlit UI ke visual styles.
+
+data/knowledge.txt
+  Abhi chhota sample knowledge corpus: Python, FastAPI, Django, RAG aur Ollama
+  ke baare mein 5 lines.
+
+db/
+  Chroma database files. Is data ko source code samajh kar edit nahi karna chahiye.
+
+requirements.txt
+  Python packages: FastAPI, Uvicorn, Streamlit, LangChain integrations, ChromaDB,
+  sentence-transformers, pyttsx3, SpeechRecognition aur python-multipart.
+
+readme
+  Ismein run commands ke saath ek bada project-generation prompt/specification hai.
+  Prompt ke har requested feature ko current code mein implemented na samjhein.
+
+temp.wav
+  Root mein audio file maujood hai; /voice endpoint bhi isi naam se current working
+  directory mein upload likhta hai. Isliye running request is file ko overwrite
+  kar sakti hai.
+
+
+4. ABHI KYA KAAM KARTA HAI AUR KYA INCOMPLETE HAI
+-------------------------------------------------
+
+Code mein maujood implementation:
+- Text chat ke liye /chat aur voice upload ke liye /voice.
+- /chat mein YouTube, Google, weather aur maps command handling.
+- General question ke liye RAG + Llama 3.
+- History ko text chat frontend se backend bhejna.
+- Whisper transcription for uploaded audio.
+- gTTS se Streamlit browser mein assistant response sunana.
+- Chroma/Hugging Face se local document retrieval.
+- Alag CLI microphone + speech response flow.
+
+README mein maanga gaya, par code se poori tarah sabit/implemented nahi:
+- User facts ko structured format mein permanently save karna (save_user_fact,
+  get_user_fact, extract_facts ya database memory nahi hai).
+- Cross-session/user account memory. Text history sirf Streamlit session state mein.
+- Voice chat mein history pass karna; /voice history nahi leta aur direct ask_rag()
+  call karta hai.
+- PDFs ingest karna; ingest.py sirf knowledge.txt read karta hai.
+- Live weather data; current weather helper Google search kholta hai.
+- Dedicated helper module ya command-detection helpers.py; kuch checks main.py
+  mein aur ek helper tools.py mein hain.
+- Automated tests; test_tts.py ek OS-specific script hai.
+- Production readiness, authentication, rate limiting, structured logging,
+  configuration/secrets management, deployment setup aur monitoring.
+- README prompt mein Python 3.11+ likha hai, par version constraint verify karne
+  wala config nahi hai.
+
+Do alag speech output/input implementations ko confuse na karein:
+- Streamlit voice UI: mic_recorder -> /voice + Whisper; answer -> gTTS/browser.
+- CLI: SpeechRecognition/Google recognition -> RAG -> pyttsx3.
+
+
+5. REQUEST FLOW - PEHLE STEP SE AAKHIRI STEP TAK
+-------------------------------------------------
+
+A. Text chat ka flow
+
+1. User Streamlit chat box mein text likhta hai.
+   Check: UI khulni chahiye aur input box dikhna chahiye.
+
+2. Frontend session messages ke saath question ko POST /chat par bhejta hai.
+   Check: backend chal raha ho; browser/network response mein HTTP 200 aur JSON
+   mein "answer" field aaye.
+
+3. Backend question lower-case karke intent dekhta hai. Pehle YouTube, phir
+   Google open, weather, maps, Google search; match na ho to RAG.
+   Check: "open youtube", "weather in Bangalore", "open maps Mysore" aur ek normal
+   knowledge question alag-alag bhejkar response/route dekhein.
+
+4. RAG query par Chroma retriever adhiktam 3 relevant documents dhoondhta hai.
+   Check: pehle ingest complete ho; query knowledge.txt ke maujood facts se judi
+   ho aur retrieved source relevant ho.
+
+5. Recent history + retrieved text + system prompt Ollama Llama 3 ko diya jaata
+   hai; model response deta hai.
+   Check: Ollama service/model available ho; /chat mein answer non-empty ho.
+   Follow-up test: "My name is Asha" ke baad "What is my name?" bhejein. UI ki
+   history forwarding ko test karein; ise permanent memory na samjhein.
+
+6. Frontend user aur assistant messages session_state mein add karta hai.
+   Check: rerun ke baad dono messages chat mein bane rahein; Clear Chat dabane par
+   current UI conversation clear ho.
+
+7. Frontend gTTS se answer ka MP3 banata hai aur browser mein autoplay audio deta hai.
+   Check: network available ho, gTTS request fail na ho, browser audio autoplay
+   allow kare. Browser autoplay policy ke karan manual play ki zaroorat ho sakti hai.
+
+B. Voice upload ka flow
+
+1. Streamlit mic_recorder se audio record karein.
+   Check: microphone permission, input device aur recorder widget kaam karein.
+
+2. Frontend recorded bytes ko multipart "file" ke roop mein POST /voice bhejta hai.
+   Check: network request mein audio/wav metadata aur audio bytes hon.
+
+3. Backend temp.wav mein file likhkar Whisper base model se transcribe karta hai.
+   Check: /voice response mein pehchana gaya "question" text hona chahiye. Noisy
+   audio, silence aur English/Hindi mix ko alag cases mein check karein.
+
+4. Transcribed text seedha ask_rag() ko jaata hai.
+   Check: voice se normal knowledge question bolkar response dekhein. Dhyan rahe:
+   filhaal voice route chat history aur /chat ke browser command routing ko reuse
+   nahi karta.
+
+5. Frontend answer chat mein dikhata hai aur gTTS audio play karta hai.
+   Check: transcription, answer aur playback teeno independently confirm karein.
+
+C. Knowledge ingestion aur RAG setup
+
+1. data/knowledge.txt mein apne domain ke saaf, sahi facts add karein.
+   Check: file encoding readable ho; content mein headings/paragraphs useful hon.
+
+2. Chroma aur embedding dependencies install hon; Hugging Face embedding model
+   pehli baar download/cache ho sakta hai.
+   Check: model load aur Chroma initialization bina error ke ho.
+
+3. Repository root se `python -m app.ingest` chalayein.
+   Check: "Knowledge Base Loaded" aaye. Phir us content se related /chat query karein.
+
+4. Database persistence verify karein: backend restart karke wahi query karein.
+   Check: knowledge dobara ingest kiye bina retrieval rahe. Ingestion baar-baar
+   chalane par duplicate documents ban sakte hain, kyunki stable IDs/dedup logic
+   nahi dikh raha.
+
+
+6. WINDOWS PAR RUN KARNE KE STEPS
+---------------------------------
+Commands repository root, D:\python\AI_Voice_Assistant, se chalayein.
+
+1. Python version dekhein:
+   python --version
+
+2. Virtual environment banayein aur activate karein:
+   python -m venv .venv
+   .\.venv\Scripts\Activate.ps1
+
+3. Listed dependencies install karein:
+   python -m pip install -r requirements.txt
+
+4. Pehle missing imports ko install/requirements mein jodein. Source imports ke
+   hisaab se kam-se-kam whisper (package ka install naam openai-whisper),
+   gTTS, streamlit-mic-recorder aur requests requirements mein listed nahi hain.
+   Windows par openai-whisper ke liye PyTorch/FFmpeg setup ki zaroorat aa sakti hai.
+   SpeechRecognition microphone ke liye audio backend dependency bhi maang sakta hai.
+   Apne Python/Windows setup ke anuroop versions choose karke clean environment
+   mein installation verify karein.
+
+5. Ollama install/start karein aur llama3 model available karein:
+   ollama pull llama3
+   Check: Ollama CLI se model ko ek chhota prompt dekar response milna chahiye.
+
+6. Knowledge base ingest karein:
+   python -m app.ingest
+
+7. Backend terminal:
+   python -m uvicorn app.main:app --reload --reload-dir app
+   Check: http://127.0.0.1:8000/docs khule; /chat aur /voice endpoints dikhne chahiye.
+
+8. Frontend doosre terminal mein:
+   .\.venv\Scripts\Activate.ps1
+   streamlit run frontend/streamlit_app.py
+   Check: Streamlit page khule, chat aur microphone UI render ho.
+
+9. Pehle text, phir voice, phir browser tools aur audio output test karein. Ek-ek
+   component alag verify karne se failure ka source aasani se milega.
+
+Note: README mein `python3` command diya hai; Windows mein aam taur par `python`
+use karein. API URL frontend mein abhi hard-coded http://127.0.0.1:8000 hai.
+
+
+7. TEST CHECKLIST - KYA VERIFY KARNA HAI
+---------------------------------------
+
+Environment:
+[ ] Python interpreter aur virtual environment expected hain.
+[ ] requirements install hote hain; app ke imports missing nahi hain.
+[ ] Ollama chal raha hai aur llama3 response deta hai.
+[ ] Chroma DB aur Hugging Face embedding model initialize hote hain.
+
+Knowledge/RAG:
+[ ] Ingestion command success message deta hai.
+[ ] data/knowledge.txt ke fact par relevant answer milta hai.
+[ ] Unrelated question par model galat tareeke se source ka daava nahi karta.
+[ ] Backend restart ke baad database se retrieval hota hai.
+[ ] Ingestion do baar chala kar duplicate behavior note kiya gaya hai.
+
+Chat/API:
+[ ] Empty/whitespace question ka behavior check kiya gaya hai.
+[ ] /chat JSON mein answer field deta hai.
+[ ] History ke saath follow-up context test hota hai.
+[ ] History ke bina naya chat expected tarah se kaam karta hai.
+[ ] Invalid request aur backend/Ollama unavailable hone par clear error milta hai.
+
+Command tools:
+[ ] YouTube open aur YouTube search sahi search URL kholte hain.
+[ ] Google search query URL-encode hoti hai aur expected tab khulta hai.
+[ ] Weather command Google weather search kholta hai (live weather API nahi).
+[ ] Maps command sahi location search kholta hai.
+[ ] Browser kis machine par khulta hai, ise verify karein: webbrowser call backend
+    process ki machine par chalega, end-user ke local browser mein zaroori nahi.
+
+Voice:
+[ ] Microphone permission aur recording kaam karte hain.
+[ ] /voice audio upload ke baad transcript deta hai.
+[ ] Clear speech, silence/noise, aur supported language/mixed-language samples test hon.
+[ ] Voice answer chat mein dikhe aur gTTS audio chale.
+[ ] Voice follow-up mein history aur command routing ki maujooda limitation note ho.
+
+Frontend/resilience:
+[ ] Clear Chat current session messages clear karta hai.
+[ ] Backend band hone, timeout, transcription failure aur TTS/network failure par
+    user ko error nazar aaye.
+[ ] Browser autoplay band ho to audio manually play ki ja sake.
+
+
+8. REFERENCE KE ROOP MEIN KAISE STUDY KAREIN
+--------------------------------------------
+Suggested learning order:
+
+1. frontend/streamlit_app.py padhein: UI state, requests aur audio playback samjhein.
+2. app/main.py padhein: HTTP API aur routing order samjhein.
+3. app/tools.py padhein: intent ke baad browser URL action kaise hota hai.
+4. app/vectorstore.py aur app/ingest.py padhein: embeddings, Chroma aur document
+   ingestion ka lifecycle samjhein.
+5. app/rag.py padhein: retrieval, prompt assembly, limited chat history aur LLM call.
+6. /voice endpoint aur CLI app/app.py compare karein: do speech pipelines ka antar.
+7. Ek feature ko local test karke hi modify karein; expected behavior likhein, focused
+   test banayein, phir UI/API end-to-end verify karein.
+
+Apna agent banate waqt yeh project achha learning prototype/reference hai, par
+production template seedha nahi. Pehle dependency list complete karein, repeated
+ingestion ko idempotent banayein, history/message schemas validate karein,
+configuration ko environment variables mein le jaayein, errors/logging sudharein,
+aur actual automated tests add karein.
+
+
+9. DETIALED HEADING - PROJECT KE LIYE ABHI CLEAR KARNE WALE POINTS
+------------------------------------------------------------------
+Neeche ki baatein repository se decide nahi hoti. Apna version banate waqt inka
+decision lein:
+
+- Assistant English, Hindi, Hinglish ya multilingual mein bolega?
+- Local/offline-only chahiye, ya gTTS/Google recognition jaise internet services
+  acceptable hain?
+- User facts sirf browser session tak rahenge, ya login ke baad database mein
+  permanently save karne hain?
+- Weather ke liye sirf search page kaafi hai, ya real weather API aur API key chahiye?
+- PDF/document uploads, multiple users aur per-user knowledge base scope mein hain?
+- Voice input ke supported formats, languages aur maximum file size kya honge?
+- Deployment local PC, private server ya public internet par hoga?
+- Project Python version aur supported Windows/Linux environments kya honge?
+- Conversation data kitne samay tak rakhna hai aur clear/delete kaise hoga?
+
+Report ke liye koi additional project-specific preference assume nahi ki gayi hai.
+Yeh sawal future implementation scope tay karne ke liye hain.
+
+
+10. SHORT GLOSSARY
+------------------
+LLM: Bada language model jo natural language response generate karta hai.
+RAG: Pehle relevant documents retrieve, phir un context se LLM response generate.
+Embedding: Text ka numerical representation jo semantic similarity dhoondhne mein
+kaam aata hai.
+Vector store: Embeddings aur unse judi text/document entries ka searchable store.
+STT: Speech-to-Text; audio se likha hua text banana.
+TTS: Text-to-Speech; likhe text ko audio mein badalna.
+API endpoint: Backend ka HTTP address, jaise POST /chat.
+Session state: Is Streamlit session ke dauran rakha temporary UI data; permanent
+database memory ke barabar nahi.
+
+
+11. STEP-BY-STEP IMPLEMENTATION AUR HAR STEP KA TEST
+----------------------------------------------------
+Yeh section project ko khud assemble karne ya existing project ko samajhkar
+dobara implement karne ka practical order deta hai. Har step ka test pass hone ke
+baad hi agle step par jaayein. Commands Windows PowerShell ke liye hain aur
+repository root D:\python\AI_Voice_Assistant se chalani hain.
+Yeh pehle wale steps repository ke current Ollama setup ko describe karte hain.
+Gemini/OpenAI API par naya implementation karna ho to neeche ke Sections 12-14
+follow karein; us case mein Ollama wala Step 3 optional/skip hai.
+
+Kaam shuru karne se pehle:
+- Python 3.11+ ko preference dein; project ke packages is version par verify karein.
+- Ollama model, Whisper model aur Hugging Face embeddings disk space le sakte hain.
+- LLM, Whisper aur gTTS ke initial setup/download mein internet ki zaroorat ho sakti hai.
+- API aur UI ko do alag PowerShell terminals mein chalana hoga.
+- Audio/microphone test ke liye microphone permission aur audio-capable machine chahiye.
+- Har test mein dekhein ki command usi .venv Python se chal rahi hai:
+  python --version
+  python -m pip --version
+
+STEP 1 - Project folder aur isolated Python environment
+
+Implementation:
+  Set-Location D:\python\AI_Voice_Assistant
+  python -m venv .venv
+  .\.venv\Scripts\Activate.ps1
+
+PowerShell script execution block ho to sirf current terminal ke liye yeh chalayein:
+  Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+  .\.venv\Scripts\Activate.ps1
+
+Test:
+  python --version
+  python -c "import sys; print(sys.executable)"
+Expected: interpreter path project ke .venv\Scripts\python.exe ko point kare.
+Agar nahi, to venv activate karke test dobara karein; global Python mein packages
+install karne se project environment sahi nahi hoga.
+
+STEP 2 - Dependencies install aur imports verify
+
+Implementation:
+  python -m pip install --upgrade pip
+  python -m pip install -r requirements.txt
+
+Is project ke source mein import hote hain lekin requirements.txt mein nahi:
+gTTS, requests, streamlit-mic-recorder aur Whisper (pip package:
+openai-whisper). Inko project ki dependency list mein document/add karna hoga,
+phir environment mein install karein:
+  python -m pip install gTTS requests streamlit-mic-recorder openai-whisper
+
+Windows par openai-whisper ke PyTorch, FFmpeg aur compatible Python/package
+versions ki zaroorat ho sakti hai. Agar install fail ho, pehle exact error aur
+Python compatibility resolve karein; bina verify kiye random versions pin na karein.
+CLI microphone ke liye SpeechRecognition ke audio input backend ki bhi zaroorat
+ho sakti hai; ise Streamlit recorder se alag test karein.
+
+Test:
+  python -c "import fastapi, uvicorn, streamlit, langchain, langchain_ollama, langchain_chroma, langchain_huggingface, chromadb, sentence_transformers, whisper, gtts, requests, streamlit_mic_recorder; print('Core imports OK')"
+Expected: "Core imports OK". Kisi ek import ka error aaye to app run karne se pehle
+usi missing package ko sahi environment mein resolve karein.
+
+STEP 3 - Local LLM tayyar karein (sirf current Ollama setup ke liye)
+
+Implementation:
+  Ollama install/start karein. Phir:
+  ollama pull llama3
+  ollama run llama3
+
+Ollama interactive prompt par ek sawal poochkar response dekhne ke baad exit karein.
+
+Test:
+  ollama list
+Expected: llama3 installed model list mein ho.
+  ollama run llama3
+Expected: prompt par model jawab de. Agar yeh fail ho, FastAPI/RAG ko debug karne
+se pehle Ollama service, model download, memory aur local setup fix karein.
+
+STEP 4 - Knowledge source aur vector database
+
+Implementation:
+1. data/knowledge.txt mein apne project se sambandhit chhote, sahi paragraphs likhein.
+2. Repository root se ingestion chalayein:
+   python -m app.ingest
+3. Ingestion Hugging Face model ko pehli baar download kar sakta hai; process ko
+   complete hone dein.
+
+Test:
+Expected terminal output: "Knowledge Base Loaded".
+Uske baad app/vectorstore.py ke embeddings aur Chroma initialization ko test karein:
+  python -c "from app.vectorstore import get_vectorstore; db=get_vectorstore(); print(type(db).__name__)"
+Expected: Chroma store object ka type print ho aur exception na aaye.
+Actual retrieval ko Step 6 mein API ke through test karein. Ingestion baar-baar
+chalane se duplicate entries ban sakti hain; filhaal script mein deduplication
+logic nazar nahi aata. Test DB ko saaf karne se pehle backup/restore ka dhyan rakhein.
+
+STEP 5 - FastAPI service ko akela start karein
+
+Implementation, PowerShell Terminal 1:
+  Set-Location D:\python\AI_Voice_Assistant
+  .\.venv\Scripts\Activate.ps1
+  python -m uvicorn app.main:app --reload --reload-dir app
+
+Test, Terminal 2:
+  (Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8000/docs).StatusCode
+Expected: 200. API schema browser mein bhi khol sakte hain:
+  http://127.0.0.1:8000/docs
+/chat aur /voice routes docs mein dikhne chahiye. Root URL "/" ka route code mein
+define nahi hai, isliye us par 404 aana expected hai.
+
+STEP 6 - Text chat API, RAG aur history test
+
+Pehle general knowledge question se RAG test karein (Terminal 2):
+  $body = @{ question = "RAG ka matlab kya hai?"; history = @() } | ConvertTo-Json -Depth 5
+  Invoke-RestMethod -Uri http://127.0.0.1:8000/chat -Method Post -ContentType "application/json" -Body $body
+
+Expected: JSON response mein "answer" ho. Ollama/Chroma/embedding errors ke liye
+Terminal 1 ke logs dekhein. Answer ki quality test karne ke liye knowledge.txt
+mein maujood fact poochhein aur verify karein ki jawab us fact se sambandhit hai.
+
+History/follow-up test:
+  $body = @{ question = "What is my name?"; history = @(@{role="user";content="My name is Asha"}, @{role="assistant";content="Nice to meet you, Asha."}) } | ConvertTo-Json -Depth 5
+  Invoke-RestMethod -Uri http://127.0.0.1:8000/chat -Method Post -ContentType "application/json" -Body $body
+
+Expected: response history mein diye gaye naam ko dhyan mein le. Yeh request ke
+saath bheji gayi chat history hai, permanent user memory nahi.
+
+STEP 7 - Command routing aur browser tools test
+
+Implementation verify karein: app/main.py intent route karta hai aur app/tools.py
+URL banakar backend machine ka browser tab kholta hai.
+
+Manual API tests:
+  $body = @{ question = "search Python decorators"; history = @() } | ConvertTo-Json -Depth 5
+  Invoke-RestMethod -Uri http://127.0.0.1:8000/chat -Method Post -ContentType "application/json" -Body $body
+
+Isi tarah alag requests mein yeh commands test karein:
+  open youtube
+  weather in Bangalore
+  open maps Mysore
+  open google
+
+Expected: response mein sahi action ka message aaye aur backend host par browser
+search/map tab khule. Agar backend kisi remote machine/container par hai, tab
+user ke browser par nahi, backend host par khulne ki koshish hogi. Weather result
+Google search hai, real-time weather API response nahi. Browser action ko test
+karne ke liye system browser available hona chahiye.
+
+STEP 8 - Voice endpoint ko frontend se pehle test karein
+
+Implementation: app/main.py import ke waqt Whisper "base" model load karta hai.
+Audio upload temp.wav ko overwrite karta hai. Test ke liye pehle se maujood
+temp.wav use kar sakte hain, lekin is file mein audio hona chahiye aur yeh kisi
+active user ka data nahi hona chahiye. Agar apni sample file ho to uska path use karein.
+
+PowerShell mein curl.exe multipart upload:
+  curl.exe -X POST -F "file=@D:\python\AI_Voice_Assistant\temp.wav;type=audio/wav" http://127.0.0.1:8000/voice
+
+Expected: JSON mein "question" (transcribed text) aur "answer" aaye. Silent ya
+unsupported audio par result khaali/galat ho sakta hai. Whisper model download,
+FFmpeg ya audio-format error aaye to backend logs dekhein. Is endpoint mein
+history nahi bheji jaati aur command-tool routing nahi hoti; ek normal RAG sawal
+bolkar pehle basic path validate karein.
+
+Voice quality test:
+- Alag, saaf audio sample mein ek chhota sawal bolein; transcript ko sune hue
+  shabdon se compare karein.
+- Silence/noise test alag karein aur dekhein ki failure/empty transcript kaise
+  report hota hai.
+- Hindi/Hinglish ko supported maan kar na chalein; apne audio par transcription
+  result verify karein.
+
+STEP 9 - Streamlit UI ko backend ke saath jodein
+
+Backend Terminal 1 mein chalta rehna chahiye. PowerShell Terminal 2 mein:
+  Set-Location D:\python\AI_Voice_Assistant
+  .\.venv\Scripts\Activate.ps1
+  streamlit run frontend/streamlit_app.py
+
+Manual test sequence:
+1. UI khule aur sidebar/chat input/microphone recorder render ho.
+2. Text mein "RAG ka matlab kya hai?" bhejein; user aur assistant messages dikhein.
+3. Follow-up question bhejein; conversation history request mein ja rahi hai yeh
+   behavior test karein.
+4. Clear Chat dabayein; displayed session messages clear hone chahiye.
+5. Microphone permission dein, recording karein aur transcript/answer chat mein dekhein.
+6. gTTS audio player se jawab sunein. Autoplay blocked ho to manual play karein.
+7. Backend band karke text request bhejne par frontend error dikhata hai ya nahi
+   dekhein; phir backend dobara chala kar normal behavior restore karein.
+
+STEP 10 - Command-line voice assistant ko alag test karein
+
+Yeh Streamlit se alag flow hai; microphone input ke liye machine par microphone
+aur SpeechRecognition ka audio backend sahi hona chahiye.
+
+Implementation/test:
+  python -m app.app
+
+Expected: greeting sunai de, microphone se bole gaye sawal ka RAG response
+pyttsx3 se bole, aur "exit", "quit" ya "stop" bolne par loop band ho.
+recognize_google internet speech recognition use karta hai; yeh offline-only path
+nahi hai. Is test ko Whisper-based /voice test ke saath mix na karein.
+
+STEP 11 - Full end-to-end acceptance test
+
+Neeche ke sab checks manual tareeke se complete karke note karein:
+[ ] Ollama se direct Llama 3 response.
+[ ] Knowledge ingestion successful aur knowledge-based /chat answer.
+[ ] History ke saath follow-up response.
+[ ] YouTube, Google, weather aur maps commands.
+[ ] Audio upload se Whisper transcript aur RAG answer.
+[ ] Streamlit text chat aur Clear Chat.
+[ ] Streamlit mic recording, answer display aur gTTS playback.
+[ ] Backend unavailable aur invalid/empty input par visible error.
+[ ] Restart ke baad Chroma persistence.
+
+Kisi check mein failure aaye to us component ke standalone step par wapas jaayein:
+package/import issue -> Step 2; model issue -> Step 3; retrieval -> Step 4/6;
+API issue -> Step 5; transcription -> Step 8; browser/UI/audio -> Step 7/9.
+Isse ek waqt mein ek hi layer debug hogi.
+
+STEP 12 - Automated tests aur agle sudhar
+
+Is repository mein abhi proper automated test suite nahi hai. Test ko maintainable
+banane ke liye:
+- pytest ko development dependency ke roop mein add karke test folder banayein.
+- app/tools.py ke URL outputs ko browser kholne ki bajaye mock karke assert karein.
+- API tests mein Ollama, Whisper, network aur browser ko mock karein; har test ke
+  liye external service chalana na pade.
+- RAG test mein retriever/LLM ko controlled test doubles se replace karein.
+- Audio upload test mein chhoti valid fixture file use karein; real Whisper model
+  ko har unit test mein load na karein.
+- Ek separate manual/integration checklist rakhein jo real Ollama/model/browser
+  ke saath kabhi-kabhi chalayi jaaye.
+
+Current code ko robust banane ke liye tests mein khaaskar yeh cases cover karein:
+empty question, malformed history, missing/corrupt audio, Whisper failure,
+Ollama unavailable, gTTS/network failure, duplicate ingestion aur browser open
+failure. Pehle expected behavior decide karein, phir test aur implementation likhein.
+
+
+12. FILE-BY-FILE IMPLEMENTATION PLAN - GEMINI YA OPENAI API
+---------------------------------------------------------
+Yeh section pehle wale local Ollama implementation ke badle hosted LLM API use
+karne ke liye hai. Gemini aur OpenAI dono ko ek hi project mein optional provider
+ke roop mein rakh sakte hain. Ek time par LLM_PROVIDER setting se ek provider
+select hoga. ChromaDB aur Hugging Face embeddings local RAG ke liye waise hi
+reh sakte hain; LLM API key sirf answer generation ke liye hoti hai.
+
+Suggested file map:
+
+requirements.txt (modify)
+  Maujooda packages rakhein. Google Gemini ke liye google-genai, OpenAI ke liye
+  openai aur environment file padhne ke liye python-dotenv add karein.
+  LangChain Ollama integration tabhi rakhein jab Ollama ko optional provider ke
+  roop mein bhi support karna ho; sirf Gemini/OpenAI use karne par ise baad mein
+  remove kiya ja sakta hai, magar pehle imports/tests check karein.
+
+.gitignore (new ya modify)
+  .env, .venv/, __pycache__/, test/cache output aur local secrets ko Git se
+  exclude karein. Existing .gitignore ko replace na karein; entries merge karein.
+
+.env.example (new, safe to commit)
+  Sirf placeholder values aur non-secret configuration:
+    LLM_PROVIDER=gemini
+    GEMINI_API_KEY=put-your-key-in-local-env
+    GEMINI_MODEL=gemini-2.5-flash
+    OPENAI_API_KEY=put-your-key-in-local-env
+    OPENAI_MODEL=gpt-4.1-mini
+  Model availability/provider account ke hisaab se model name verify karein.
+  Example file mein asli key kabhi na daalein.
+
+.env (developer ki local file, Git mein commit nahi karni)
+  .env.example ki copy banayein. Sirf istemal karne wale provider ki asli API key
+  apne local .env mein rakhein. File share, screenshot, log ya public repository
+  mein key na bhejein. Agar key kabhi leak ho jaaye to provider dashboard par
+  turant revoke karke nayi key banayein.
+
+app/config.py (new)
+  python-dotenv se .env load kare; LLM_PROVIDER, selected provider ki API key
+  aur model name padhe; provider validate kare. Missing key par clear error de,
+  key ki actual value error/log mein na likhe. Provider "gemini" ya "openai"
+  ke alawa ho to startup/first call par explicit configuration error ho.
+
+app/llm.py (new)
+  Provider clients ko ek common function, jaise generate_text(prompt: str) -> str,
+  ke peeche rakhe. Is file mein Gemini aur OpenAI SDK calls hon. Provider-specific
+  clients ko ek baar initialize/reuse karein; har message par naya client banana
+  zaroori nahi. Empty response aaye to error ko explicit rakhein; chupchaap dummy
+  answer ya doosre provider par fallback na karein.
+
+app/rag.py (modify)
+  app/vectorstore.py se retriever le, history + retrieved context + current
+  question se prompt banaye, aur OllamaLLM.invoke() ki jagah
+  app.llm.generate_text(prompt) call kare. Prompt assembly aur retrieval ko
+  provider-specific code se alag rakhein.
+
+app/vectorstore.py (keep)
+  ChromaDB aur Hugging Face embeddings ka kaam. API LLM badalne se vector-store
+  ko automatically badalne ki zaroorat nahi.
+
+app/ingest.py (keep, improve later)
+  Knowledge documents ko Chroma mein daalne ka kaam. Isme provider API key ki
+  zaroorat nahi honi chahiye; ingestion ko chat generation se alag rakhein.
+
+app/main.py (small change / verify)
+  /chat aur /voice endpoints, request schemas aur tool routing rakhein. Dono
+  endpoint ko RAG tak pahunchne par ek hi ask_rag() use karna chahiye; provider
+  selection main.py mein duplicate na karein. Whisper STT API LLM provider se
+  alag hai; is plan se Whisper automatic taur par Gemini/OpenAI par switch nahi hota.
+
+frontend/streamlit_app.py (key handling ke liye unchanged)
+  Is file mein Gemini/OpenAI key mat padhein, Streamlit session state mein mat
+  rakhein aur browser ko kabhi return na karein. Frontend sirf FastAPI ko request
+  bheje; provider key sirf backend process ko mile.
+
+tests/test_llm.py (new)
+  Provider selection, missing key, unsupported provider, successful text return
+  aur SDK/API error behavior test kare. Unit tests mein real paid API request na bhejein;
+  SDK clients ko mock/fake karein.
+
+tests/test_rag.py (new)
+  Retriever aur generate_text ko mock karke verify kare ki question, recent
+  conversation history aur retrieved context final prompt mein jaate hain.
+
+tests/test_api.py (new)
+  FastAPI TestClient ke zariye /chat aur /voice behavior test kare; expensive
+  Whisper, external API, browser aur RAG dependencies ko controlled mocks se replace kare.
+
+
+13. FILES MEIN LIKHNE WALA MUKHYA CODE - PROVIDER EXAMPLE
+--------------------------------------------------------
+Yeh short reference implementation hai. Isse actual files mein daalne se pehle
+package versions install karke test karein. SDK method names/available models
+provider ke current official docs aur account mein verify karein. Dono provider
+dependencies install karne par bhi sirf selected provider ki key required ho.
+
+A. requirements.txt mein additions
+
+  google-genai
+  openai
+  python-dotenv
+
+Provider SDK versions ko project mein test karne ke baad pin/lock karein. Existing
+requirements.txt ke packages delete na karein bina poore project ko test kiye.
+
+B. .gitignore mein additions
+
+  .env
+  .venv/
+  __pycache__/
+  *.py[cod]
+  .pytest_cache/
+
+Existing ignore rules ko preserve karein. Git check:
+  git check-ignore .env
+Expected: .env ignore path ke roop mein report ho. Asli key wala .env kabhi
+git add/commit na karein.
+
+C. app/config.py - provider configuration ka example
+
+  import os
+  from dotenv import load_dotenv
+
+  load_dotenv()
+
+  LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini").strip().lower()
+  GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+  GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+  OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+  OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
+
+  def validate_llm_config() -> None:
+      if LLM_PROVIDER == "gemini" and not GEMINI_API_KEY:
+          raise RuntimeError("GEMINI_API_KEY is required when LLM_PROVIDER=gemini")
+      if LLM_PROVIDER == "openai" and not OPENAI_API_KEY:
+          raise RuntimeError("OPENAI_API_KEY is required when LLM_PROVIDER=openai")
+      if LLM_PROVIDER not in {"gemini", "openai"}:
+          raise RuntimeError("LLM_PROVIDER must be 'gemini' or 'openai'")
+
+Actual code mein project style, type-check aur test ke hisaab se config ko app
+startup par validate karein. Error mein secret ki value include na karein.
+
+D. app/llm.py - provider calls ka example
+
+  from functools import lru_cache
+  from google import genai
+  from openai import OpenAI
+  from app.config import (
+      GEMINI_API_KEY, GEMINI_MODEL, LLM_PROVIDER,
+      OPENAI_API_KEY, OPENAI_MODEL, validate_llm_config,
+  )
+
+  @lru_cache(maxsize=1)
+  def _gemini_client() -> genai.Client:
+      validate_llm_config()
+      if not GEMINI_API_KEY:
+          raise RuntimeError("GEMINI_API_KEY is required")
+      return genai.Client(api_key=GEMINI_API_KEY)
+
+  @lru_cache(maxsize=1)
+  def _openai_client() -> OpenAI:
+      validate_llm_config()
+      if not OPENAI_API_KEY:
+          raise RuntimeError("OPENAI_API_KEY is required")
+      return OpenAI(api_key=OPENAI_API_KEY)
+
+  def generate_text(prompt: str) -> str:
+      if LLM_PROVIDER == "gemini":
+          response = _gemini_client().models.generate_content(
+              model=GEMINI_MODEL,
+              contents=prompt,
+          )
+          text = response.text
+      elif LLM_PROVIDER == "openai":
+          response = _openai_client().responses.create(
+              model=OPENAI_MODEL,
+              input=prompt,
+          )
+          text = response.output_text
+      else:
+          validate_llm_config()
+          raise RuntimeError("Unsupported LLM provider")
+      if not text or not text.strip():
+          raise RuntimeError(f"{LLM_PROVIDER} returned an empty response")
+      return text.strip()
+
+Google aur OpenAI clients ko alag typed functions mein rakha gaya hai, taaki
+provider-specific SDK methods mix na hon. Is example ke SDK type annotations aur
+method names ko install kiye gaye package versions ke saath Pylance/type-check se
+verify karein. API errors ko log karte waqt request details sanitize karein aur
+prompt/API key log na karein.
+
+E. app/rag.py - existing Ollama call badalne ka exact idea
+
+Maujooda:
+  from langchain_ollama import OllamaLLM
+  ...
+  llm = OllamaLLM(model="llama3", temperature=0.3)
+  ...
+  response = llm.invoke(prompt)
+  return response.strip()
+
+API-backed version mein:
+  from app.llm import generate_text
+  ...
+  response = generate_text(prompt)
+  return response
+
+Ollama import, `llm` object aur uske dependency ko tabhi remove karein jab project
+mein Ollama provider chhodna pakka ho. RAG prompt se "facts permanent hain" jaisa
+claim tabhi karein jab actual storage/memory feature implement ho; abhi chat history
+request/UI session se aati hai, permanent memory nahi.
+
+F. app/main.py - endpoint ke role ko same rakhein
+
+  /chat -> command tools match kare to tools ko route kare;
+           warna ask_rag(question, history)
+  /voice -> audio transcribe kare;
+            phir ask_rag(transcribed_question, history=[])
+
+Provider switching endpoint mein nahi honi chahiye. Isse text aur voice dono ek
+hi RAG -> generate_text() -> Gemini/OpenAI path use karenge. Agar voice mein
+conversation context chahiye to baad mein /voice request/schema mein conversation
+history add karein aur test likhein; current endpoint mein yeh feature nahi hai.
+
+G. .env.example aur local .env ka sample
+
+.env.example (safe placeholders only):
+  LLM_PROVIDER=gemini
+  GEMINI_API_KEY=replace-with-your-key
+  GEMINI_MODEL=gemini-2.5-flash
+  OPENAI_API_KEY=replace-with-your-key
+  OPENAI_MODEL=gpt-4.1-mini
+
+Local .env mein `LLM_PROVIDER=gemini` ho to sirf Gemini key ki zaroorat honi
+chahiye. `LLM_PROVIDER=openai` karne par OpenAI key required honi chahiye.
+Sample model IDs ko provider ke account/docs se confirm karein; key ko command
+line argument, Python source, frontend JavaScript, screenshot ya Git commit mein na rakhein.
+
+
+14. API KEY SETUP, PROVIDER SWITCH AUR TEST FLOW
+------------------------------------------------
+
+STEP A - SDK install karein
+  .venv active karke requirements.txt mein google-genai, openai,
+  python-dotenv additions save karein; phir:
+  python -m pip install -r requirements.txt
+  python -m pip check
+Expected: package dependency conflicts na report hon.
+
+STEP B - Secrets local rakhein
+1. Repository root mein .env.example ko copy karke .env banayein.
+2. Gemini ya OpenAI provider ki key apne local .env mein set karein.
+3. .gitignore mein `.env` ho aur:
+   git check-ignore .env
+   command is file ko ignored dikhaye.
+4. Source search/review mein API key literal, print statement, frontend response
+   ya committed diff mein secret nahi hona chahiye. Key ko report/chat mein paste
+   karne ki zaroorat nahi hai.
+
+STEP C - Pehle ek provider configure karein
+Gemini:
+  LLM_PROVIDER=gemini
+  GEMINI_API_KEY=your-private-key
+  GEMINI_MODEL=account mein available model
+
+OpenAI:
+  LLM_PROVIDER=openai
+  OPENAI_API_KEY=your-private-key
+  OPENAI_MODEL=account mein available model
+
+Yeh values local .env mein rahengi, report ya source code mein nahi. API billing,
+quota, account access aur rate limits provider ke account par depend karte hain.
+
+STEP D - LLM-only smoke test karein
+Backend call se pehle yeh chalayein:
+  python -c "from app.llm import generate_text; print(generate_text('Reply with exactly: API connection OK'))"
+Expected: selected provider ka short text response. Terminal output mein response
+aa sakta hai, lekin API key kabhi print nahi honi chahiye.
+
+Failure diagnosis:
+- Missing-key error: selected provider ka env variable local .env mein hai ya nahi check.
+- Authentication error: key ko provider dashboard mein validate/recreate karein;
+  error text mein key copy/share na karein.
+- Model-not-found/access error: model name aur account permissions verify karein.
+- Quota/rate-limit/network error: provider usage/billing/network check karein.
+- API failure par doosre provider ko automatic switch na karein, jab tak aisa
+  fallback explicitly design aur test na kiya ho.
+
+STEP E - RAG integration test karein
+1. `python -m app.ingest` ke baad backend restart karein.
+2. /chat ko knowledge.txt se juda sawal bhejein.
+3. Expected: retrieved context ke saath selected API provider jawab de.
+4. /chat ko unrelated sawal bhejein aur dekhein ki assistant source facts invent
+   na kare. LLM output probabilistic hai; ek response ko accuracy proof na samjhein.
+
+STEP F - Provider switch test karein
+1. Gemini config ke saath smoke test pass karein.
+2. LLM_PROVIDER=openai set karke backend/process restart karein; OpenAI key/model
+   local environment mein set karein.
+3. Wahi smoke test aur wahi RAG question dobara karein.
+4. Dono provider par ek saath key rakhna optional hai; selected provider hi use ho.
+5. Unsupported LLM_PROVIDER aur selected key missing karke expected clear
+   configuration error verify karein. Test environment mein dummy keys use karein;
+   valid key ko tests/source mein kabhi hard-code na karein.
+
+STEP G - Automated test coverage
+  python -m pip install pytest
+  python -m pytest -q
+
+Unit tests mein real Gemini/OpenAI network calls default se disable rakhein.
+SDK client ko mock karke test karein:
+[ ] Gemini selected ho to Gemini generate call ko configured model/prompt mile.
+[ ] OpenAI selected ho to OpenAI responses call ko configured model/input mile.
+[ ] Missing selected key par explicit config error aaye.
+[ ] Unknown provider par explicit config error aaye.
+[ ] API error chupaya na jaaye aur error output mein secret leak na ho.
+[ ] RAG prompt mein latest question, recent history aur retrieved context hon.
+[ ] Voice aur text dono ek hi ask_rag/generate_text path par hon.
+
+Asli provider se paid integration smoke test sirf jaan-boojhkar alag se chalayein.
+Test ke baad provider dashboard par usage/cost check karein.
+
+
+15. GEMINI/OPENAI API KEY KE LIYE SECURITY AUR PRACTICAL NOTES
+--------------------------------------------------------------
+- Key backend secret hai; Streamlit frontend ya browser mein kabhi expose na karein.
+- `.env` local development ke liye hai. Production mein host/cloud secret manager
+  ya protected environment variables use karein.
+- Least-privilege/project-specific key banayein; usage/budget limits aur alerts
+  configure karein.
+- API key ya full prompt ko logs, exception text, screenshots, public issue ya Git
+  history mein na likhein. Agar key commit ho gayi ho, sirf file se delete karna
+  kaafi nahi: key revoke/rotate karein aur Git history exposure ko handle karein.
+- Gemini/OpenAI API call internet par prompt bhejti hai. Personal, confidential
+  ya sensitive user data bhejne se pehle provider privacy, retention aur account
+  settings samjhein.
+- API call par latency, per-token cost, rate limits aur temporary outage ho sakte
+  hain; UI mein timeout/error ko user-friendly dikhayein. Secret ko error message
+  mein shamil na karein.
+- Embedding model abhi Hugging Face/local pipeline hai; isse LLM API key ki
+  zaroorat nahi. Whisper transcription bhi alag component hai aur is report ka
+  Gemini/OpenAI switch sirf LLM response generation ko badalta hai.
