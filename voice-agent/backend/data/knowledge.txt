@@ -1,0 +1,9 @@
+Python is a high-level programming language.
+
+FastAPI is a modern Python framework used for APIs.
+
+Django is a powerful web framework.
+
+RAG stands for Retrieval Augmented Generation.
+
+Ollama allows running LLMs locally.
