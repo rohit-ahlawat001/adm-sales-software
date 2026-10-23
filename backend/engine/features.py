@@ -197,7 +197,7 @@ def answer_question(question, chunks):
 
 
 def run_voice_document_chat():
-    """Start the voice loop. Say 'exit', 'quit', or 'stop' to end it."""
+    """Start the voice loop. Say 'exit' or 'quit' to end it."""
     # Load once at startup. This prevents rereading every PDF after each question.
     chunks = load_document_chunks()
     if not chunks:
@@ -211,7 +211,7 @@ def run_voice_document_chat():
         return
 
     # Tell the caller that document loading was successful.
-    welcome_message = "I am ready. Ask a question about your documents, or say exit."
+    welcome_message = "Hello! I am your Business assistant. and I will do my best to provide accurate information. If you want to exit, just say 'exit' or 'quit'."
     print(welcome_message)
     speak(welcome_message)
 
@@ -221,9 +221,9 @@ def run_voice_document_chat():
         if not question:
             # Audio errors should not end the whole assistant.
             continue
-        if question in {"exit", "quit", "stop"}:
+        if question in {"exit", "quit"}:
             # End only when the caller explicitly uses an exit command.
-            speak("Goodbye.")
+            speak("Sure hang on a sec.")
             break
 
         # Search the loaded documents, print the evidence, and speak it aloud.
